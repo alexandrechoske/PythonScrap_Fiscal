@@ -1,0 +1,139 @@
+WebScrap with Selenium to extract bought items from government fiscal document and save it to local spreadsheets and use it for create a Power BI with the datas.
+Version 1.0
+
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+import xlrd
+import requests
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+import datetime
+import time
+import re
+from tqdm import tqdm
+separador = '--------------------------------------------------------------------------------------------------------------------------------------'
+
+xlf = xlrd.open_workbook('bd_links.xlsm') #abrir a planilha
+xls = xlf.sheet_by_name('Planilha1') #abrir na planilha a aba especificada
+dataTbl = xls.col_values(8,1) #ir até a coluna 8 e pular 1 linha abaixo
+numRegistros = len(dataTbl)
+print('Preparing to analyze ' + str(numRegistros) + ' jobs')
+print ('Starting job at ' + str(time.strftime("%H:%M:%S")))
+startTime = datetime.datetime.now()
+
+n = numRegistros
+i = 0
+
+
+
+while i < numRegistros:
+    for i in tqdm(range(numRegistros)):
+
+        browser = webdriver.Firefox() #definindo o WebBrowser pro Mozilla
+        browser.get(dataTbl[i]) #Entrando na URL especificada
+
+        # loginButton = browser.find_element_by_id('acessar-meus-creditos')
+        # loginButton.click
+
+        userBox = browser.find_element_by_id('attribute') #localizando o inputbox do usuário
+        userBox.send_keys('xxxxxxx') #colocando o usuário
+        print('Username Inserted')
+
+        passBox = browser.find_element_by_id('password') #localizando o inputbox da senha
+        passBox.send_keys('xxxxxxx') #colocando a senha
+        print('Password Inserted')
+        print(separador)
+
+        passBox.send_keys(Keys.ENTER) #apertando enter e entrando!!!
+        print('Logged ON Successfully, waiting page to load')
+        time.sleep(5)
+
+        try:
+            print('Searching for the tab ') 
+            tabInfos = browser.find_element_by_xpath('//*[@id="tab_7"]') #procura a aba das Infos adicionais
+            tabInfos.click() #clicnado na aba
+
+
+    #     targetURL = browser.find_element_by_xpath('//html/body/div[2]/div[7]/div/fieldset/fieldset/table/tbody/tr[1]/td/span').text #Localizando a URL Target
+
+            targetURL = browser.find_element_by_xpath('//span[@style="word-break: break-all"]').text
+            print('Collected URL: ' + str(targetURL))
+
+
+
+            browser.get(targetURL) #pega a URL Target e eentra nela agora uhuu
+
+            print ('Search and export from target URL - ' + targetURL)
+            print(separador)
+
+            req = requests.get(targetURL) # requisição da URL
+            if req.status_code == 200:
+                print('Requisition Successfuly, entering on the website!')
+
+            content = req.content
+            soup = BeautifulSoup(content, 'html.parser')
+            table = soup.find(name='table')
+            dataDoc = str(soup.find("strong", text=" Emissão: ").next_sibling.partition('-')[0])[0:19] # procura a strong que tem a data e pega
+            classLocal = str(soup.find("div", attrs={'class':'txtTopo'})) # procura a div que tem o local do estabelecimento
+            rangeDeLocal = (classLocal.find('>'))+1 # pega a range até o > para extrair o nome do estabelecimento
+            rangeAteLocal = (classLocal.find('</')) # pega a range até < para extrair o nome do estabelecimento
+            nomeLocal = str(classLocal)[rangeDeLocal:rangeAteLocal] # extrai somente o nome do local de acordo com as ranges atribuidas acima
+            classCNPJ = str(soup.find("div", attrs={'class':'text'})) # procura a div que tem o CNPJ do estabelecimento
+            rangeDeCNPJ = (classCNPJ.find(':'))+1 # pega a range até o : para extrair o nome do estabelecimento
+            rangeAteCNPJ = (classCNPJ.find('</')) # pega a range até < para extrair o nome do estabelecimento
+            cnpjLocal = str(classCNPJ)[rangeDeCNPJ:rangeAteCNPJ] # extrai somente o nome do local de acordo com as ranges atribuidas acima
+            table_str = str(table)
+            df = pd.read_html(table_str)[0]
+            df['Local'] = nomeLocal #adiciona o nome do local a tabela em uma nova coluna
+            fileName = str(dataDoc).replace('/','-').replace(':','.') + '.csv' # gera o nome do arquivo substituindo barra e dois pontos
+            df.to_csv( fileName , index= False, encoding='utf-8') # exporta a tabela para CSV com o nome da data no arquivo 
+            print('CSV Generated Successfuly!')
+            print('CSV Infos: ' + dataDoc + ' - ' + nomeLocal + ' with name ' + fileName ) 
+            print(separador)
+            print (time.strftime("%H:%M:%S"))
+
+
+
+        except:
+            print('Time to return to the initial URL...')
+            browser.get('https://notaparana.pr.gov.br/nfprweb')
+            print(separador)
+            print('Time to LogOff from the website')
+            logoutButton = browser.find_element_by_xpath('//*[@id="user-logout"]') #procura a aba das Infos adicionais
+            logoutButton.click()
+            time.sleep(10)
+            print('Logoff successfully, waiting for new commands ;)')
+            print(separador)
+            browser.close()
+            n = n-1
+            print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Remaining Jobs ' + str(n))
+            print(separador)
+            print('Job ended successfully')
+            print (time.strftime("%H:%M:%S"))
+
+
+
+        print('Time to return to the initial URL...')
+        browser.get('https://notaparana.pr.gov.br/nfprweb')
+        print(separador)
+        print('Time to LogOff from the website')
+        print('Logoff successfully, waiting for new commands ;)')
+        logoutButton = browser.find_element_by_xpath('//*[@id="user-logout"]') #procura a aba das Infos adicionais
+        logoutButton.click()
+        time.sleep(10)
+        print(separador)
+        browser.close()
+        n = n-1
+        print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Remaining Jobs ' + str(n))
+        print(separador)
+        print('Job ended successfully, going to another job!')
+        print (time.strftime("%H:%M:%S")) 
+        step = 5
+    i = i + 1
+
+
+endTime = datetime.datetime.now()
+timeExec = endTime -  startTime
+print('All Jobs Done in ' + str(timeExec))
+print('Average job time is ' + (timeExec/numRegistros))
