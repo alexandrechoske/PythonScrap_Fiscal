@@ -1,0 +1,93 @@
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+import xlrd
+from xlrd import open_workbook
+import datetime
+import time
+import re
+from tqdm import tqdm
+import lxml.html as lh
+import xlwt
+separador = '--------------------------------------------------------------------------------------------------------------------------------------'
+
+xlf = xlrd.open_workbook('bd_links.xlsm') #abrir a planilha
+xls = xlf.sheet_by_name('Planilha1') #abrir na planilha a aba especificada
+dataTbl = xls.col_values(8,1) #ir até a coluna 8 e pular 1 linha abaixo
+numRegistros = len(dataTbl)
+print('Preparing to analyze ' + str(numRegistros) + ' jobs')
+print ('Starting job at ' + str(time.strftime("%H:%M:%S")))
+
+n = numRegistros
+i = 0
+
+lista_descricao = []
+lista_unidade = []
+lista_valor = []
+lista_qtde = []
+lista_data = []
+lista_local = []
+lista_desconto = []
+lista_codigoPrd = []
+
+getcookies = dict(cookies_are='')
+
+
+while i < numRegistros:
+    for x in tqdm(range(numRegistros)):
+        url = dataTbl[i]
+        print(url)
+        cookies = getcookies
+        req = requests.get(url, cookies = cookies)
+        req.text
+        if req.status_code == 200:
+            print('Requisition Successfuly, entering on the website!')
+        content = req.content
+        soup = BeautifulSoup(content, 'html.parser')       
+        
+        
+        rParseProd = re.findall(r"Descrição[\s\S\^]*", str(soup), re.MULTILINE)    
+        rParseUC = re.findall(r"Comercial[\s\S\^]*", str(soup), re.MULTILINE) 
+        rParseQtde = re.findall(r"Qtd[\s\S\^]*", str(soup), re.MULTILINE)    
+        rParseValor = re.findall(r"Valor\(R\$\)[\s\S\^]+]*", str(soup), re.MULTILINE)
+
+
+        rDescricao = re.findall(r"fixo-prod-serv-descricao\">[\s\S^][^l]*?span>(?P<nomeProduto>[\S\s]*?)<[\S\s]*?", str(rParseProd), re.MULTILINE)
+        lista_descricao.extend(rDescricao)
+
+        rUnidCom = re.findall(r"fixo-prod-serv-uc\">[\s\S^][^l]*?span>(?P<ucProduto>[\S\s]*?)<", str(rParseUC), re.MULTILINE)
+        lista_unidade.extend(rUnidCom)
+
+        rValor = re.findall(r"fixo-prod-serv-vb\">[\s\S^][^l]*?span>(?P<qtdProduto>[\S\s]*?)<", str(rParseValor), re.MULTILINE)
+        lista_valor.extend(rValor)
+
+        rQtde = re.findall(r"fixo-prod-serv-qtd\">[\s\S^][^l]*?span>(?P<qtdProduto>[\S\s]*?)<", str(rParseQtde), re.MULTILINE)
+        lista_qtde.extend(rQtde)
+
+        rData = re.findall(r"Data de Emissão\</label>[\s\S]......(?P<data>...................)", str(soup), re.MULTILINE)
+
+        rLocal = re.findall(r"Razão Social</label>[\s]*<span>(?P<local>[^A][\S\s]*?)<", str(soup), re.MULTILINE)
+
+
+        rValorDesconto = re.findall(r"Valor do Desconto[\s\S]*?span>(?P<valorDesconto>[\S]*)?<", str(soup), re.MULTILINE)
+        lista_desconto.extend(rValorDesconto)       
+
+        rCodProduto = re.findall(r"Código do Produto[\s\S\^]*?span>(?P<codProduto>[\S\s]*?)<", str(soup), re.MULTILINE)
+        lista_codigoPrd.extend(rCodProduto)
+
+        df = pd.DataFrame({'Descrição': rDescricao, 
+                           'Unidade': rUnidCom, 
+                           'Valor': rValor,
+                           'Qtde': rQtde,
+                           'Desconto': rValorDesconto,
+                           'CodProd': rCodProduto})
+        
+        excelName = 'pbi' + str(rData[0]).replace('/','-').replace(':','-') + '--' + str(rLocal[0]) + '.xlsx'
+        df.to_excel( str(excelName) + '.xlsx', engine = 'openpyxl')     
+
+
+        print(separador)
+        print('Job Done')
+        i = i+1
+        
+print('All Jobs Done')
